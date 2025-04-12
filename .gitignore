@@ -1,0 +1,19 @@
+# Django #
+*.log
+*.pot
+*.pyc
+__pycache__
+db.sqlite3
+media
+
+# Virtual environment #
+../sacco_env/
+venv/
+env/
+
+# IDE #
+.idea/
+.vscode/
+
+# Sensitive information #
+*.env

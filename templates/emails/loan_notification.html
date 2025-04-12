@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Loan Notification</title>
+</head>
+<body>
+    <h1>{{ notification_type }}</h1>
+    <p>Dear {{ member_name }},</p>
+    <p>{{ message }}</p>
+    {% if payment_date %}
+    <p>Payment due date: {{ payment_date }}</p>
+    <p>Payment amount: {{ payment_amount }}</p>
+    {% endif %}
+    <p>Thank you for your attention to this matter.</p>
+</body>
+</html>
