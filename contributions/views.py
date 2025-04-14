@@ -18,6 +18,32 @@ from .serializers import (
 from .models import ContributionReminder, ContributionReport
 
 
+class MemberContributionViewSet(viewsets.ReadOnlyModelViewSet):
+    """API endpoint for members to view their own contributions"""
+    
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = MonthlyContributionSerializer
+    
+    def get_queryset(self):
+        # Only return contributions for the current user
+        return MonthlyContribution.objects.filter(
+            member=self.request.user
+        ).order_by('-year', '-month', '-created_at')
+
+
+class MemberShareCapitalViewSet(viewsets.ReadOnlyModelViewSet):
+    """API endpoint for members to view their own share capital payments"""
+    
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = ShareCapitalSerializer
+    
+    def get_queryset(self):
+        # Only return share capital payments for the current user
+        return ShareCapital.objects.filter(
+            member=self.request.user
+        ).order_by('-transaction_date', '-created_at')
+
+
 class MonthlyContributionViewSet(AdminRequiredMixin, viewsets.ModelViewSet):
     """API endpoint for managing monthly contributions - Admin only"""
     
@@ -74,7 +100,7 @@ class MonthlyContributionViewSet(AdminRequiredMixin, viewsets.ModelViewSet):
             user=self.request.user,
             action='CONTRIBUTION_RECORD',
             ip_address=self.request.META.get('REMOTE_ADDR'),
-            user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
             description=f"Recorded monthly contribution of {contribution.amount} for {contribution.member.full_name} ({contribution.get_month_name()} {contribution.year})."
         )
     
@@ -326,8 +352,8 @@ class ShareCapitalViewSet(AdminRequiredMixin, viewsets.ModelViewSet):
         ActivityLog.objects.create(
             user=self.request.user,
             action='SHARE_CAPITAL_RECORD',
-            ip_address=self.request.META.get('REMOTE_ADDR'),
-            user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
             description=f"Recorded share capital payment of {payment.amount} for {payment.member.full_name}."
         )
     
