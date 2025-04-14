@@ -14,6 +14,7 @@ urlpatterns = [
     path('api/loans/', include('loans.urls')),
     path('api/transactions/', include('transactions.urls')),
     path('api/reports/', include('reports.urls')),
+    path('api/settings/', include('settings_api.urls')),
     
     # JWT token endpoints
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
