@@ -99,6 +99,14 @@ class MonthlyContribution(models.Model):
         null=True, 
         related_name='recorded_contributions'
     )
+
+    def get_month_name(self):
+        """Get the month name from the month number"""
+        months = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ]
+        return months[self.month - 1]
     
     class Meta:
         ordering = ['-year', '-month', '-created_at']

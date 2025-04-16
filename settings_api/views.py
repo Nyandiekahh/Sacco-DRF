@@ -10,7 +10,6 @@ from .permissions import IsAdminUser
 class SaccoSettingsViewSet(viewsets.ModelViewSet):
     """ViewSet for viewing and editing SACCO settings"""
     serializer_class = SaccoSettingsSerializer
-    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         """Return the SACCO settings (usually just one record)"""
@@ -22,31 +21,17 @@ class SaccoSettingsViewSet(viewsets.ModelViewSet):
         Anyone authenticated can view them.
         """
         if self.action in ['update', 'partial_update', 'create', 'destroy']:
-            return [IsAdminUser()]
-        return super().get_permissions()
-    
-    def list(self, request, *args, **kwargs):
-        """Get the current SACCO settings - returns the first record or creates defaults"""
-        settings = SaccoSettings.get_settings()  # Use our helper method
-        serializer = self.get_serializer(settings)
-        return Response(serializer.data)
-    
-    def create(self, request, *args, **kwargs):
-        """Override create to update existing settings instead of creating new ones"""
-        settings = SaccoSettings.get_settings()
-        serializer = self.get_serializer(settings, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+            return [IsAuthenticated(), IsAdminUser()]
+        return [IsAuthenticated()]
     
     @action(detail=False, methods=['get'])
     def current(self, request):
         """Get the current settings (convenience endpoint)"""
         settings = SaccoSettings.get_settings()
         serializer = self.get_serializer(settings)
-        return Response(serializer.data)
-    
-# settings_api/views.py
+        return Response(serializer.data)    
+
+
 class UserSettingsViewSet(viewsets.ViewSet):
     """
     ViewSet for user-specific settings
@@ -65,14 +50,14 @@ class UserSettingsViewSet(viewsets.ViewSet):
         if serializer.is_valid():
             serializer.save()
             
-            # Log the activity
+            # Log the activiy
             from authentication.models import ActivityLog
             ActivityLog.objects.create(
                 user=user,
-                action='ACCOUNT_UPDATE',
+                action='PROFILE_UPDATE',
                 ip_address=request.META.get('REMOTE_ADDR'),
                 user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                description=f"Updated profile through settings.",
+                description=f"User profile updated through settings.",
             )
             
             return Response(serializer.data)
