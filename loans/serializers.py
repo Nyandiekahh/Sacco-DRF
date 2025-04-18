@@ -3,7 +3,7 @@
 from rest_framework import serializers
 from authentication.models import SaccoUser
 from sacco_core.models import Loan, LoanRepayment
-from .models import LoanApplication, RepaymentSchedule, LoanStatement, LoanNotification
+from .models import LoanApplication, RepaymentSchedule, LoanStatement, LoanNotification, PaymentMethod, LoanDisbursement
 
 
 class LoanApplicationSerializer(serializers.ModelSerializer):
@@ -206,3 +206,145 @@ class LoanGuarantorSerializer(serializers.Serializer):
                 raise serializers.ValidationError("Phone number is required for external guarantors.")
         
         return data
+    
+# Add these new serializers to your existing loans/serializers.py
+
+class PaymentMethodSerializer(serializers.ModelSerializer):
+    """Serializer for payment methods"""
+    
+    payment_type_display = serializers.SerializerMethodField()
+    status_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PaymentMethod
+        fields = [
+            'id', 'name', 'payment_type', 'payment_type_display', 
+            'description', 'bank_name', 'account_name', 'account_number',
+            'provider', 'phone_number', 'internal_code', 'status',
+            'status_display', 'transaction_fee_percentage', 'transaction_fee_fixed',
+            'is_default', 'allowed_for_disbursement', 'allowed_for_repayment',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'created_at', 'updated_at',
+            'payment_type_display', 'status_display'
+        ]
+    
+    def get_payment_type_display(self, obj):
+        return obj.get_payment_type_display()
+    
+    def get_status_display(self, obj):
+        return obj.get_status_display()
+
+
+class LoanDisbursementSerializer(serializers.ModelSerializer):
+    """Serializer for loan disbursements"""
+    
+    payment_method_name = serializers.SerializerMethodField()
+    processed_by_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = LoanDisbursement
+        fields = [
+            'id', 'loan', 'amount', 'payment_method', 'payment_method_name',
+            'reference_number', 'transaction_cost', 'net_amount', 
+            'recipient_account', 'recipient_name', 'description',
+            'disbursement_date', 'processed_by', 'processed_by_name',
+            'created_at'
+        ]
+        read_only_fields = [
+            'id', 'loan', 'amount', 'net_amount',
+            'recipient_name', 'processed_by', 'processed_by_name',
+            'created_at', 'payment_method_name'
+        ]
+    
+    def get_payment_method_name(self, obj):
+        return obj.payment_method.name if obj.payment_method else None
+    
+    def get_processed_by_name(self, obj):
+        return obj.processed_by.full_name if obj.processed_by else None
+    
+    def validate_reference_number(self, value):
+        """Validate reference number"""
+        if not value:
+            raise serializers.ValidationError("Reference number is required.")
+        
+        # Check for duplicate reference number
+        if LoanDisbursement.objects.filter(reference_number=value).exists():
+            raise serializers.ValidationError("This reference number has already been used.")
+        
+        return value
+    
+    def validate(self, data):
+        """Validate disbursement data"""
+        
+        # Ensure payment method is provided
+        if 'payment_method' not in data:
+            raise serializers.ValidationError({"payment_method": "Payment method is required"})
+        
+        # Validate recipient account based on payment method
+        if 'payment_method' in data and 'recipient_account' in data:
+            try:
+                payment_method = PaymentMethod.objects.get(id=data['payment_method'])
+                
+                # For bank transfers, validate account format
+                if payment_method.payment_type == 'BANK_TRANSFER' and not data['recipient_account']:
+                    raise serializers.ValidationError({"recipient_account": "Bank account number is required"})
+                
+                # For mobile money, validate phone format
+                if payment_method.payment_type == 'MOBILE_MONEY':
+                    # Simple validation for phone number format
+                    if not data['recipient_account'] or not re.match(r'^\+?[0-9]{10,15}$', data['recipient_account']):
+                        raise serializers.ValidationError({"recipient_account": "Valid phone number is required"})
+            except PaymentMethod.DoesNotExist:
+                raise serializers.ValidationError({"payment_method": "Invalid payment method"})
+        
+        return data
+
+
+# Update the existing LoanRepaymentSerializer to include payment method
+class LoanRepaymentSerializer(serializers.ModelSerializer):
+    """Serializer for loan repayments"""
+    
+    recorded_by_name = serializers.SerializerMethodField()
+    payment_method_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = LoanRepayment
+        fields = [
+            'id', 'loan', 'amount', 'transaction_date', 'reference_number',
+            'transaction_code', 'transaction_message', 'created_at',
+            'created_by', 'recorded_by_name', 'payment_method', 'payment_method_name'
+        ]
+        read_only_fields = [
+            'id', 'loan', 'created_at', 'created_by', 'recorded_by_name',
+            'payment_method_name'
+        ]
+    
+    def get_recorded_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.full_name
+        return None
+    
+    def get_payment_method_name(self, obj):
+        # This assumes you'll add a payment_method field to LoanRepayment model
+        if hasattr(obj, 'payment_method') and obj.payment_method:
+            return obj.payment_method.name
+        return None
+    
+    def validate_amount(self, value):
+        """Validate repayment amount"""
+        if value <= 0:
+            raise serializers.ValidationError("Repayment amount must be greater than zero.")
+        return value
+    
+    def validate_reference_number(self, value):
+        """Validate reference number"""
+        if not value:
+            raise serializers.ValidationError("Reference number is required.")
+        
+        # Check for duplicate reference number
+        if LoanRepayment.objects.filter(reference_number=value).exists():
+            raise serializers.ValidationError("This reference number has already been used.")
+        
+        return value

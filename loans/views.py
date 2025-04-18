@@ -10,15 +10,16 @@ from rest_framework.views import APIView
 from authentication.models import SaccoUser, ActivityLog
 from sacco_core.models import Loan, LoanRepayment, Transaction, MemberShareSummary
 from members.views import AdminRequiredMixin
-from .models import LoanApplication, RepaymentSchedule, LoanStatement, LoanNotification
+from .models import LoanApplication, RepaymentSchedule, LoanStatement, LoanNotification, PaymentMethod, LoanDisbursement
 from .serializers import (
     LoanApplicationSerializer,
     LoanSerializer,
     LoanRepaymentSerializer,
     LoanStatementSerializer,
-    RepaymentScheduleSerializer
+    RepaymentScheduleSerializer, 
+    PaymentMethodSerializer,
+    LoanDisbursementSerializer
 )
-
 
 class LoanApplicationViewSet(viewsets.ModelViewSet):
     """API endpoint for loan applications"""
@@ -692,4 +693,361 @@ class LoanEligibilityView(APIView):
             'share_capital_complete': summary.share_capital_completion_percentage >= 100,
             'is_verified': user.is_verified,
             'is_on_hold': user.is_on_hold
+        })
+    
+# Add these new views to your existing loans/views.py
+
+
+class PaymentMethodViewSet(viewsets.ModelViewSet):
+    """API endpoint for payment methods"""
+    
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = PaymentMethodSerializer
+    
+    def get_queryset(self):
+        """Return appropriate payment methods based on usage"""
+        queryset = PaymentMethod.objects.filter(status='ACTIVE')
+        
+        # Filter by usage
+        usage = self.request.query_params.get('usage')
+        if usage == 'disbursement':
+            queryset = queryset.filter(allowed_for_disbursement=True)
+        elif usage == 'repayment':
+            queryset = queryset.filter(allowed_for_repayment=True)
+        
+        # Filter by type
+        payment_type = self.request.query_params.get('type')
+        if payment_type:
+            queryset = queryset.filter(payment_type=payment_type.upper())
+        
+        return queryset.order_by('name')
+    
+    def perform_create(self, serializer):
+        # Only admins can create payment methods
+        if self.request.user.role != SaccoUser.ADMIN:
+            return Response(
+                {"error": "Only administrators can create payment methods"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        serializer.save()
+    
+    def perform_update(self, serializer):
+        # Only admins can update payment methods
+        if self.request.user.role != SaccoUser.ADMIN:
+            return Response(
+                {"error": "Only administrators can update payment methods"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        serializer.save()
+    
+    @action(detail=True, methods=['post'])
+    def verify_payment_method(self, request, pk=None):
+        """Verify a payment method"""
+        
+        # Only admins can verify payment methods
+        if request.user.role != SaccoUser.ADMIN:
+            return Response(
+                {"error": "Only administrators can verify payment methods"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        payment_method = self.get_object()
+        
+        # Update status to ACTIVE
+        payment_method.status = 'ACTIVE'
+        payment_method.save()
+        
+        # Log the activity
+        ActivityLog.objects.create(
+            user=request.user,
+            action='PAYMENT_METHOD_VERIFICATION',
+            description=f"Verified payment method: {payment_method.name}"
+        )
+        
+        return Response({"status": "success", "message": "Payment method verified successfully"})
+
+
+class LoanDisbursementView(APIView):
+    """Enhanced API endpoint for loan disbursement"""
+    
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @transaction.atomic
+    def post(self, request, loan_id):
+        """Process loan disbursement with enhanced payment methods"""
+        
+        # Only admins can disburse loans
+        if request.user.role != SaccoUser.ADMIN:
+            return Response(
+                {"error": "Only administrators can disburse loans"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            loan = Loan.objects.get(id=loan_id)
+        except Loan.DoesNotExist:
+            return Response(
+                {"error": "Loan not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if loan is in correct status
+        if loan.status != 'APPROVED':
+            return Response(
+                {"error": f"Loan is {loan.get_status_display()}, not Approved"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate input
+        serializer = LoanDisbursementSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Get payment method
+        try:
+            payment_method = PaymentMethod.objects.get(
+                id=serializer.validated_data['payment_method'],
+                allowed_for_disbursement=True,
+                status='ACTIVE'
+            )
+        except PaymentMethod.DoesNotExist:
+            return Response(
+                {"error": "Invalid or inactive payment method for disbursement"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Calculate transaction cost
+        amount = loan.amount
+        transaction_cost = serializer.validated_data.get('transaction_cost', 0)
+        
+        # Calculate default transaction cost if not provided
+        if transaction_cost == 0:
+            transaction_cost = payment_method.calculate_transaction_fee(amount)
+        
+        # Calculate net amount (after fees)
+        net_amount = amount - transaction_cost
+        
+        # Create disbursement record
+        disbursement = LoanDisbursement.objects.create(
+            loan=loan,
+            amount=amount,
+            payment_method=payment_method,
+            reference_number=serializer.validated_data['reference_number'],
+            transaction_cost=transaction_cost,
+            net_amount=net_amount,
+            recipient_account=serializer.validated_data.get('recipient_account', ''),
+            recipient_name=loan.member.full_name,
+            description=serializer.validated_data.get('description', ''),
+            disbursement_date=serializer.validated_data.get('disbursement_date', timezone.now().date()),
+            processed_by=request.user
+        )
+        
+        # Update loan status
+        loan.status = 'DISBURSED'
+        loan.disbursement_date = disbursement.disbursement_date
+        loan.disbursed_by = request.user
+        loan.disbursed_amount = net_amount
+        loan.processing_fee = transaction_cost
+        loan.save()
+        
+        # Generate repayment schedule
+        RepaymentSchedule.generate_schedule(loan)
+        
+        # Create transaction record for disbursement
+        transaction = Transaction.objects.create(
+            transaction_type='LOAN_DISBURSEMENT',
+            member=loan.member,
+            amount=net_amount,
+            transaction_date=disbursement.disbursement_date,
+            transaction_cost=transaction_cost,
+            description=f"Loan disbursement via {payment_method.name}",
+            reference_number=disbursement.reference_number,
+            related_loan=loan,
+            created_by=request.user
+        )
+        
+        # Create loan notification
+        notification = LoanNotification.objects.create(
+            loan=loan,
+            notification_type='DISBURSEMENT',
+            message=f"Your loan of {amount} has been disbursed. Amount credited: {net_amount} via {payment_method.name}"
+        )
+        
+        # Send the notification
+        notification.send_notification()
+        
+        # Log the activity
+        ActivityLog.objects.create(
+            user=request.user,
+            action='LOAN_DISBURSEMENT',
+            description=f"Disbursed loan of {amount} to {loan.member.full_name} via {payment_method.name}"
+        )
+        
+        disbursement_serializer = LoanDisbursementSerializer(disbursement)
+        
+        return Response({
+            "status": "success",
+            "message": "Loan disbursed successfully",
+            "disbursement": disbursement_serializer.data,
+            "loan": {
+                "id": str(loan.id),
+                "status": loan.status,
+                "disbursed_amount": loan.disbursed_amount,
+                "disbursement_date": loan.disbursement_date
+            },
+            "transaction_id": str(transaction.id)
+        })
+
+
+class LoanRepaymentView(APIView):
+    """Enhanced API endpoint for loan repayment"""
+    
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @transaction.atomic
+    def post(self, request, loan_id):
+        """Process loan repayment with enhanced payment methods"""
+        
+        # Allow members to make repayments for their own loans
+        try:
+            loan = Loan.objects.get(id=loan_id)
+        except Loan.DoesNotExist:
+            return Response(
+                {"error": "Loan not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check permissions - admin or loan owner
+        if request.user.role != SaccoUser.ADMIN and request.user != loan.member:
+            return Response(
+                {"error": "You don't have permission to make repayments for this loan"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check if loan is in correct status
+        if loan.status != 'DISBURSED':
+            return Response(
+                {"error": f"Loan is {loan.get_status_display()}, not Disbursed"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate input
+        serializer = LoanRepaymentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Get payment method if provided
+        payment_method = None
+        if 'payment_method' in serializer.validated_data:
+            try:
+                payment_method = PaymentMethod.objects.get(
+                    id=serializer.validated_data['payment_method'],
+                    allowed_for_repayment=True,
+                    status='ACTIVE'
+                )
+            except PaymentMethod.DoesNotExist:
+                return Response(
+                    {"error": "Invalid or inactive payment method for repayment"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Process the repayment
+        amount = serializer.validated_data['amount']
+        transaction_details = {
+            'reference_number': serializer.validated_data.get('reference_number', ''),
+            'transaction_code': serializer.validated_data.get('transaction_code', ''),
+            'transaction_message': serializer.validated_data.get('transaction_message', '')
+        }
+        
+        # Add payment method details if available
+        if payment_method:
+            transaction_details['payment_method'] = payment_method.name
+        
+        # Add repayment
+        repayment = loan.add_repayment(amount, transaction_details, request.user)
+        
+        # Create transaction record
+        transaction_description = f"Loan repayment"
+        if payment_method:
+            transaction_description += f" via {payment_method.name}"
+        
+        transaction = Transaction.objects.create(
+            transaction_type='LOAN_REPAYMENT',
+            member=loan.member,
+            amount=amount,
+            transaction_date=repayment.transaction_date,
+            description=transaction_description,
+            reference_number=repayment.reference_number,
+            related_loan=loan,
+            created_by=request.user
+        )
+        
+        # Update repayment schedule
+        schedules = RepaymentSchedule.objects.filter(
+            loan=loan,
+            status__in=['PENDING', 'PARTIAL', 'OVERDUE']
+        ).order_by('due_date')
+        
+        remaining_amount = amount
+        for schedule in schedules:
+            if remaining_amount <= 0:
+                break
+                
+            if schedule.remaining_amount <= remaining_amount:
+                # This installment can be fully paid
+                paid_amount = schedule.remaining_amount
+                schedule.amount_paid += paid_amount
+                schedule.remaining_amount = 0
+                schedule.status = 'PAID'
+                schedule.save()
+                
+                remaining_amount -= paid_amount
+            else:
+                # Partial payment for this installment
+                schedule.amount_paid += remaining_amount
+                schedule.remaining_amount -= remaining_amount
+                schedule.status = 'PARTIAL'
+                schedule.save()
+                
+                remaining_amount = 0
+        
+        # Create loan notification
+        notification_type = 'LOAN_PAID' if loan.status == 'SETTLED' else 'PAYMENT_RECEIVED'
+        notification_message = (
+            "Your loan has been fully repaid. Thank you!" 
+            if loan.status == 'SETTLED' 
+            else f"We have received your loan payment of {amount}. Remaining balance: {loan.remaining_balance}"
+        )
+        
+        notification = LoanNotification.objects.create(
+            loan=loan,
+            notification_type=notification_type,
+            message=notification_message
+        )
+        
+        # Send the notification
+        notification.send_notification()
+        
+        # Log the activity
+        ActivityLog.objects.create(
+            user=request.user,
+            action='LOAN_REPAYMENT',
+            description=f"Recorded loan repayment of {amount} for {loan.member.full_name}"
+        )
+        
+        return Response({
+            "status": "success",
+            "message": "Loan repayment processed successfully",
+            "repayment": {
+                "id": str(repayment.id),
+                "amount": repayment.amount,
+                "transaction_date": repayment.transaction_date,
+                "reference_number": repayment.reference_number
+            },
+            "loan": {
+                "id": str(loan.id),
+                "status": loan.status,
+                "total_repaid": loan.total_repaid,
+                "remaining_balance": loan.remaining_balance,
+                "is_settled": loan.status == 'SETTLED'
+            },
+            "transaction_id": str(transaction.id)
         })

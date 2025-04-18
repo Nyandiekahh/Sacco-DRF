@@ -429,3 +429,114 @@ class LoanNotification(models.Model):
             # Log the error
             print(f"Failed to send loan notification: {str(e)}")
             return False
+        
+# Add this to your existing loans/models.py
+
+class PaymentMethod(models.Model):
+    """Payment methods for loan disbursements and repayments"""
+    
+    PAYMENT_TYPE_CHOICES = [
+        ('BANK_TRANSFER', 'Bank Transfer'),
+        ('MOBILE_MONEY', 'Mobile Money'),
+        ('CHEQUE', 'Cheque'),
+        ('CASH', 'Cash'),
+        ('CARD', 'Debit/Credit Card'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('ACTIVE', 'Active'),
+        ('INACTIVE', 'Inactive'),
+        ('PENDING', 'Pending Verification'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100)
+    payment_type = models.CharField(max_length=20, choices=PAYMENT_TYPE_CHOICES)
+    description = models.TextField(blank=True)
+    
+    # For bank transfers
+    bank_name = models.CharField(max_length=100, blank=True)
+    account_name = models.CharField(max_length=100, blank=True)
+    account_number = models.CharField(max_length=50, blank=True)
+    
+    # For mobile money
+    provider = models.CharField(max_length=50, blank=True)  # e.g., M-Pesa, Airtel Money
+    phone_number = models.CharField(max_length=20, blank=True)
+    
+    # For internal identification
+    internal_code = models.CharField(max_length=50, blank=True)
+    
+    # Status
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='ACTIVE')
+    transaction_fee_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    transaction_fee_fixed = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    # For admin use
+    is_default = models.BooleanField(default=False)
+    allowed_for_disbursement = models.BooleanField(default=True)
+    allowed_for_repayment = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['name']
+    
+    def __str__(self):
+        return f"{self.name} ({self.get_payment_type_display()})"
+    
+    def calculate_transaction_fee(self, amount):
+        """Calculate transaction fee for a given amount"""
+        percentage_fee = amount * (self.transaction_fee_percentage / 100)
+        total_fee = percentage_fee + self.transaction_fee_fixed
+        return total_fee
+    
+    def save(self, *args, **kwargs):
+        # If this payment method is set as default, unset others
+        if self.is_default:
+            PaymentMethod.objects.filter(is_default=True).exclude(id=self.id).update(is_default=False)
+        super().save(*args, **kwargs)
+
+
+class LoanDisbursement(models.Model):
+    """Records loan disbursement details"""
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    loan = models.ForeignKey(Loan, on_delete=models.CASCADE, related_name='disbursements')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    
+    # Payment method details
+    payment_method = models.ForeignKey(PaymentMethod, on_delete=models.PROTECT, related_name='loan_disbursements')
+    reference_number = models.CharField(max_length=100)
+    transaction_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    net_amount = models.DecimalField(max_digits=12, decimal_places=2)  # Amount after fees
+    
+    # Recipient details
+    recipient_account = models.CharField(max_length=100, blank=True)
+    recipient_name = models.CharField(max_length=255, blank=True)
+    
+    description = models.TextField(blank=True)
+    disbursement_date = models.DateField()
+    
+    # Admin who processed the disbursement
+    processed_by = models.ForeignKey(
+        SaccoUser, 
+        on_delete=models.SET_NULL, 
+        null=True,
+        related_name='processed_disbursements'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-disbursement_date', '-created_at']
+    
+    def __str__(self):
+        return f"Disbursement for {self.loan.member.full_name}'s loan - {self.amount}"
+    
+    def save(self, *args, **kwargs):
+        # Calculate net amount if not set
+        if not self.net_amount:
+            self.net_amount = self.amount - self.transaction_cost
+        
+        super().save(*args, **kwargs)
