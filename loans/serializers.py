@@ -240,8 +240,12 @@ class PaymentMethodSerializer(serializers.ModelSerializer):
 class LoanDisbursementSerializer(serializers.ModelSerializer):
     """Serializer for loan disbursements"""
     
-    payment_method_name = serializers.SerializerMethodField()
-    processed_by_name = serializers.SerializerMethodField()
+    # Add a field for direct member payment method selection
+    member_payment_method = serializers.ChoiceField(
+        choices=['mpesa', 'bank'], 
+        required=False,
+        write_only=True
+    )
     
     class Meta:
         model = LoanDisbursement
@@ -250,7 +254,7 @@ class LoanDisbursementSerializer(serializers.ModelSerializer):
             'reference_number', 'transaction_cost', 'net_amount', 
             'recipient_account', 'recipient_name', 'description',
             'disbursement_date', 'processed_by', 'processed_by_name',
-            'created_at'
+            'created_at', 'member_payment_method'  # Added member_payment_method
         ]
         read_only_fields = [
             'id', 'loan', 'amount', 'net_amount',

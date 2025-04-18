@@ -297,3 +297,17 @@ class AdminSettingsViewSet(viewsets.ViewSet):
                 {"error": "Document not found."}, 
                 status=status.HTTP_404_NOT_FOUND
             )
+        
+    @action(detail=False, methods=['get'])
+    def current(self, request):
+        """Get the current settings (convenience endpoint)"""
+        settings = SaccoSettings.get_settings()
+        serializer = self.get_serializer(settings)
+    
+        # Optional: Add dividend calculation methods
+        response_data = serializer.data
+        response_data['dividend_calculation_methods'] = [
+            method[0] for method in SaccoSettings._meta.get_field('dividend_calculation_method').choices
+        ]
+    
+        return Response(response_data)

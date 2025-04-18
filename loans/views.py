@@ -772,6 +772,69 @@ class LoanDisbursementView(APIView):
     
     permission_classes = [permissions.IsAuthenticated]
     
+    def get(self, request, loan_id):
+        """Get payment method options for a specific loan"""
+
+    def post(self, request, loan_id):
+        """Process loan disbursement with enhanced payment methods"""
+        return self.get(request, loan_id)
+        
+        # Only admins can view disbursement options
+        if request.user.role != SaccoUser.ADMIN:
+            return Response(
+                {"error": "Only administrators can disburse loans"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            loan = Loan.objects.get(id=loan_id)
+        except Loan.DoesNotExist:
+            return Response(
+                {"error": "Loan not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get member payment methods from their profile
+        member = loan.member
+        payment_methods = []
+        
+        # Add M-Pesa if available
+        if member.mpesa_number:
+            payment_methods.append({
+                'type': 'MOBILE_MONEY',
+                'name': 'M-Pesa',
+                'account_number': member.mpesa_number,
+                'account_name': member.full_name
+            })
+        
+        # Add bank account if available
+        if member.bank_account_number and member.bank_name:
+            payment_methods.append({
+                'type': 'BANK_TRANSFER',
+                'name': f'{member.bank_name} Account',
+                'account_number': member.bank_account_number,
+                'account_name': member.bank_account_name or member.full_name
+            })
+        
+        # Get available system payment methods
+        system_payment_methods = PaymentMethod.objects.filter(
+            status='ACTIVE',
+            allowed_for_disbursement=True
+        )
+        
+        system_payment_serializer = PaymentMethodSerializer(system_payment_methods, many=True)
+        
+        return Response({
+            'loan_id': str(loan.id),
+            'member': {
+                'id': str(member.id),
+                'name': member.full_name,
+                'email': member.email
+            },
+            'member_payment_methods': payment_methods,
+            'system_payment_methods': system_payment_serializer.data
+        })
+    
     @transaction.atomic
     def post(self, request, loan_id):
         """Process loan disbursement with enhanced payment methods"""
