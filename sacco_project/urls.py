@@ -5,6 +5,8 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from authentication.views import VerifyDocumentView  # Add this import
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -15,6 +17,8 @@ urlpatterns = [
     path('api/transactions/', include('transactions.urls')),
     path('api/reports/', include('reports.urls')),
     path('api/settings/', include('settings_api.urls')),
+    path('admin/verify-document/<uuid:document_id>/', VerifyDocumentView.as_view(), name='verify-document-by-id'),
+path('admin/verify-document/type/<str:document_type>/', VerifyDocumentView.as_view(), name='verify-document-by-type'),
     
     # JWT token endpoints
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),

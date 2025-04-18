@@ -567,7 +567,7 @@ class ToggleUserStatusView(APIView):
 class VerifyDocumentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     
-    def post(self, request, document_id):
+    def post(self, request, document_type=None, document_id=None):
         """Verify a user's document."""
         
         # Check if user has admin privileges
@@ -578,7 +578,27 @@ class VerifyDocumentView(APIView):
             )
         
         try:
-            document = UserDocument.objects.get(id=document_id)
+            # If specific document ID is provided, use that
+            if document_id:
+                document = UserDocument.objects.get(id=document_id)
+            # If document type is provided, find the first unverified document of that type
+            elif document_type:
+                document = UserDocument.objects.filter(
+                    user=request.user, 
+                    document_type=document_type, 
+                    is_verified=False
+                ).first()
+                
+                if not document:
+                    return Response(
+                        {"error": f"No unverified {document_type} document found."}, 
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            else:
+                return Response(
+                    {"error": "Either document_id or document_type must be provided."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             # Update verification status
             document.is_verified = True
@@ -630,7 +650,6 @@ class VerifyDocumentView(APIView):
                 {"error": "Document not found."}, 
                 status=status.HTTP_404_NOT_FOUND
             )
-
 
 class SendMassEmailView(APIView):
     permission_classes = [permissions.IsAuthenticated]

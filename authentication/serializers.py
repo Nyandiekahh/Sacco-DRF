@@ -89,34 +89,19 @@ class UserProfileSerializer(serializers.ModelSerializer):
     
     def get_documents(self, obj):
         """Get document verification status"""
-        document_status = {
-            'id_front': {
-                'uploaded': False,
-                'verified': False
-            },
-            'id_back': {
-                'uploaded': False,
-                'verified': False
-            },
-            'passport': {
-                'uploaded': False,
-                'verified': False
-            }
-        }
-        
         documents = obj.documents.all()
-        for doc in documents:
-            if doc.document_type == 'ID_FRONT':
-                document_status['id_front']['uploaded'] = True
-                document_status['id_front']['verified'] = doc.is_verified
-            elif doc.document_type == 'ID_BACK':
-                document_status['id_back']['uploaded'] = True
-                document_status['id_back']['verified'] = doc.is_verified
-            elif doc.document_type == 'PASSPORT':
-                document_status['passport']['uploaded'] = True
-                document_status['passport']['verified'] = doc.is_verified
-        
-        return document_status
+        return [
+            {
+                'id': str(doc.id),
+                'document_type': doc.document_type,
+                'document_type_display': doc.get_document_type_display(),
+                'is_verified': doc.is_verified,
+                'uploaded_at': doc.uploaded_at,
+                'verified_at': doc.verified_at,
+                'document_url': self.context['request'].build_absolute_uri(doc.document.url) if doc.document else None
+            }
+            for doc in documents
+        ]
     
     def get_is_admin(self, obj):
         """Check if user is an admin"""
@@ -251,6 +236,7 @@ class ActivityLogSerializer(serializers.Serializer):
     
     def get_action_display(self, obj):
         return obj.get_action_display()
+
 
 class InvitationListSerializer(serializers.ModelSerializer):
     invited_by_email = serializers.EmailField(source='invited_by.email', read_only=True)
