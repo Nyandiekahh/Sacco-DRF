@@ -251,3 +251,17 @@ class ActivityLogSerializer(serializers.Serializer):
     
     def get_action_display(self, obj):
         return obj.get_action_display()
+
+class InvitationListSerializer(serializers.ModelSerializer):
+    invited_by_email = serializers.EmailField(source='invited_by.email', read_only=True)
+    invited_by_name = serializers.CharField(source='invited_by.full_name', read_only=True)
+    is_expired = serializers.BooleanField(read_only=True)
+    
+    class Meta:
+        model = Invitation
+        fields = [
+            'id', 'email', 'created_at', 'expires_at', 'is_used', 
+            'invited_by_email', 'invited_by_name', 'share_capital_term',
+            'is_expired'
+        ]
+        read_only_fields = fields

@@ -2,13 +2,56 @@
 <html>
 <head>
     <title>SACCO Invitation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        .otp-code {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 18px;
+            text-align: center;
+            margin: 15px 0;
+        }
+        .resend-notice {
+            background-color: #fff3cd;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+    </style>
 </head>
 <body>
-    <h1>Welcome to Our SACCO</h1>
-    <p>You have been invited to join our SACCO system.</p>
-    <p><strong>Your OTP code is: {{ otp }}</strong></p>
-    <p>This code will expire in {{ expiry_hours }} hours.</p>
-    <p>Please use this code to complete your registration.</p>
-    <p>Regards,<br>{{ inviter_name }}</p>
+    <div class="container">
+        {% if is_resend %}
+        <div class="resend-notice">
+            <p>Your previous invitation has been renewed with a new code.</p>
+        </div>
+        {% endif %}
+        
+        <h1>Welcome to Our SACCO</h1>
+        <p>You have been invited to join our SACCO system.</p>
+        <div class="otp-code">
+            <strong>Your OTP code is: {{ otp }}</strong>
+        </div>
+        <p>This code will expire in {{ expiry_hours }} hours.</p>
+        <p>Please use this code to complete your registration.</p>
+        <p>Regards,<br>{{ inviter_name }}</p>
+    </div>
 </body>
 </html>

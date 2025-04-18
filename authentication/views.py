@@ -1,6 +1,10 @@
 # authentication/views.py
 
 import logging
+import random
+import string
+from datetime import timedelta
+
 from django.conf import settings
 from django.utils import timezone
 from django.core.mail import send_mail
@@ -19,7 +23,8 @@ from .serializers import (
     OTPVerificationSerializer,
     PasswordResetRequestSerializer,
     PasswordResetSerializer,
-    DocumentUploadSerializer
+    DocumentUploadSerializer,
+    InvitationListSerializer
 )
 
 logger = logging.getLogger(__name__)
@@ -698,3 +703,122 @@ class SendMassEmailView(APIView):
         return Response({
             'message': f'Emails sent to {sent_count} members. Failed: {error_count}.'
         }, status=status.HTTP_200_OK)
+
+class ListInvitationsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """List all invitations sent by the admin."""
+        
+        # Check if user has admin privileges
+        if request.user.role != SaccoUser.ADMIN:
+            return Response(
+                {"error": "You do not have permission to view invitations."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get all invitations
+        invitations = Invitation.objects.all().order_by('-created_at')
+        
+        # Optional filtering by email
+        email_filter = request.query_params.get('email')
+        if email_filter:
+            invitations = invitations.filter(email__icontains=email_filter)
+        
+        # Optional filtering by status
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            if status_filter == 'used':
+                invitations = invitations.filter(is_used=True)
+            elif status_filter == 'pending':
+                now = timezone.now()
+                invitations = invitations.filter(is_used=False, expires_at__gt=now)
+            elif status_filter == 'expired':
+                now = timezone.now()
+                invitations = invitations.filter(is_used=False, expires_at__lte=now)
+        
+        # Serialize and return data
+        serializer = InvitationListSerializer(invitations, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ResendInvitationView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request, invitation_id):
+        """Resend an invitation."""
+        
+        # Check if user has admin privileges
+        if request.user.role != SaccoUser.ADMIN:
+            return Response(
+                {"error": "You do not have permission to resend invitations."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            # Get the invitation
+            invitation = Invitation.objects.get(id=invitation_id)
+            
+            # Check if invitation is already used
+            if invitation.is_used:
+                return Response(
+                    {"error": "This invitation has already been used."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Generate new OTP and expiration time
+            invitation.otp = ''.join(random.choices(string.digits, k=6))
+            invitation.expires_at = timezone.now() + timedelta(hours=48)
+            invitation.save()
+            
+            # Send the invitation email
+            subject = 'Invitation to join SACCO (Resent)'
+            message = f"""
+            You have been invited to join our SACCO system.
+            Your OTP code is: {invitation.otp}
+            This code will expire in 48 hours.
+            
+            Please use this code to complete your registration.
+            """
+            
+            # For HTML email (preferred)
+            html_message = render_to_string('emails/invitation.html', {
+                'otp': invitation.otp,
+                'expiry_hours': 48,
+                'inviter_name': request.user.full_name or request.user.email,
+                'is_resend': True
+            })
+            
+            try:
+                send_mail(
+                    subject,
+                    message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [invitation.email],
+                    html_message=html_message,
+                    fail_silently=False,
+                )
+                
+                # Log the activity
+                ActivityLog.objects.create(
+                    user=request.user,
+                    action='INVITE',
+                    ip_address=request.META.get('REMOTE_ADDR'),
+                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                    description=f"Resent invitation to {invitation.email}.",
+                )
+                
+                return Response({"message": "Invitation resent successfully."}, status=status.HTTP_200_OK)
+                
+            except Exception as e:
+                logger.error(f"Failed to resend invitation email: {str(e)}")
+                return Response(
+                    {"error": "Failed to send invitation email."}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+                
+        except Invitation.DoesNotExist:
+            return Response(
+                {"error": "Invitation not found."}, 
+                status=status.HTTP_404_NOT_FOUND
+            )

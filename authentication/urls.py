@@ -1,5 +1,3 @@
-# authentication/urls.py
-
 from django.urls import path
 from .views import (
     InviteMemberView,
@@ -13,12 +11,16 @@ from .views import (
     AdminResetUserOTPView,
     ToggleUserStatusView,
     VerifyDocumentView,
-    SendMassEmailView
+    SendMassEmailView,
+    ListInvitationsView,
+    ResendInvitationView
 )
 
 urlpatterns = [
     # Invitation and registration
     path('invite/', InviteMemberView.as_view(), name='invite-member'),
+    path('invitations/', ListInvitationsView.as_view(), name='list-invitations'),
+    path('invitations/<uuid:invitation_id>/resend/', ResendInvitationView.as_view(), name='resend-invitation'),
     path('otp-login/', OTPLoginView.as_view(), name='otp-login'),
     path('complete-registration/', CompleteRegistrationView.as_view(), name='complete-registration'),
     
