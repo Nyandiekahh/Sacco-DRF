@@ -175,17 +175,14 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # For future React frontend
 ]
 
-# Email settings (replace with your SMTP server details)
+# Gmail SMTP settings
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.yourmailserver.com'
+EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'your-email@example.com'
-EMAIL_HOST_PASSWORD = 'your-email-password'
-DEFAULT_FROM_EMAIL = 'no-reply@yoursacco.com'
-
-# For development, you can use the console backend instead:
-# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_HOST_USER = 'kms2022.sacco@gmail.com'
+EMAIL_HOST_PASSWORD = 'cimi zklx qdhx gfcn'  # Gmail App Password
+DEFAULT_FROM_EMAIL = 'kms2022.sacco@gmail.com'
 
 # OTP Settings
 OTP_TOTP_ISSUER = 'SACCO System'
