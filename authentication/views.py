@@ -583,15 +583,33 @@ class VerifyDocumentView(APIView):
                 document = UserDocument.objects.get(id=document_id)
             # If document type is provided, find the first unverified document of that type
             elif document_type:
-                document = UserDocument.objects.filter(
-                    user=request.user, 
-                    document_type=document_type, 
-                    is_verified=False
-                ).first()
-                
-                if not document:
+                # Get the member ID from the request data
+                member_id = request.data.get('member_id')
+                if not member_id:
                     return Response(
-                        {"error": f"No unverified {document_type} document found."}, 
+                        {"error": "member_id is required for document type verification."}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                try:
+                    # Get the member user by ID
+                    member_user = SaccoUser.objects.get(id=member_id)
+                    
+                    # Find the document
+                    document = UserDocument.objects.filter(
+                        user=member_user,  # Use the member's user object, not request.user
+                        document_type=document_type, 
+                        is_verified=False
+                    ).first()
+                    
+                    if not document:
+                        return Response(
+                            {"error": f"No unverified {document_type} document found for this member."}, 
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                except SaccoUser.DoesNotExist:
+                    return Response(
+                        {"error": "Member not found."}, 
                         status=status.HTTP_404_NOT_FOUND
                     )
             else:
@@ -650,6 +668,7 @@ class VerifyDocumentView(APIView):
                 {"error": "Document not found."}, 
                 status=status.HTTP_404_NOT_FOUND
             )
+
 
 class SendMassEmailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -722,6 +741,7 @@ class SendMassEmailView(APIView):
         return Response({
             'message': f'Emails sent to {sent_count} members. Failed: {error_count}.'
         }, status=status.HTTP_200_OK)
+
 
 class ListInvitationsView(APIView):
     permission_classes = [permissions.IsAuthenticated]

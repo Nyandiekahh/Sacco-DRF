@@ -17,8 +17,8 @@ urlpatterns = [
     path('api/transactions/', include('transactions.urls')),
     path('api/reports/', include('reports.urls')),
     path('api/settings/', include('settings_api.urls')),
-    path('admin/verify-document/<uuid:document_id>/', VerifyDocumentView.as_view(), name='verify-document-by-id'),
-path('admin/verify-document/type/<str:document_type>/', VerifyDocumentView.as_view(), name='verify-document-by-type'),
+    path('api/admin/verify-document/<uuid:document_id>/', VerifyDocumentView.as_view(), name='verify-document-by-id'),
+    path('api/admin/verify-document/type/<str:document_type>/', VerifyDocumentView.as_view(), name='verify-document-by-type'),
     
     # JWT token endpoints
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),

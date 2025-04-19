@@ -38,4 +38,5 @@ urlpatterns = [
     path('admin/toggle-user-status/<uuid:user_id>/', ToggleUserStatusView.as_view(), name='toggle-user-status'),
     path('admin/verify-document/<uuid:document_id>/', VerifyDocumentView.as_view(), name='verify-document'),
     path('admin/send-mass-email/', SendMassEmailView.as_view(), name='send-mass-email'),
+    path('admin/verify-document/type/<str:document_type>/', VerifyDocumentView.as_view(), name='verify-document-by-type'),
 ]
