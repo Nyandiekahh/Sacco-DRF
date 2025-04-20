@@ -3,7 +3,7 @@
 from rest_framework import serializers
 from authentication.models import SaccoUser
 from sacco_core.models import Loan, LoanRepayment
-from .models import LoanApplication, RepaymentSchedule, LoanStatement, LoanNotification, PaymentMethod, LoanDisbursement
+from .models import LoanApplication, RepaymentSchedule, LoanStatement, LoanNotification, PaymentMethod, LoanDisbursement, GuarantorRequest, GuarantorLimit
 
 
 class LoanApplicationSerializer(serializers.ModelSerializer):
@@ -352,3 +352,99 @@ class LoanRepaymentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("This reference number has already been used.")
         
         return value
+
+# Add these serializers to loans/serializers.py
+
+class GuarantorLimitSerializer(serializers.ModelSerializer):
+    """Serializer for guarantor limits"""
+    
+    member_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = GuarantorLimit
+        fields = [
+            'id', 'member', 'member_name', 'total_guaranteed_amount',
+            'active_guarantees_count', 'maximum_guarantee_amount',
+            'available_guarantee_amount', 'updated_at'
+        ]
+        read_only_fields = fields
+    
+    def get_member_name(self, obj):
+        return obj.member.full_name
+
+
+class EligibleGuarantorSerializer(serializers.ModelSerializer):
+    """Serializer for eligible guarantors"""
+    
+    available_guarantee_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    maximum_percentage = serializers.DecimalField(max_digits=5, decimal_places=2)
+    
+    class Meta:
+        model = SaccoUser
+        fields = [
+            'id', 'full_name', 'email', 'phone_number', 
+            'available_guarantee_amount', 'maximum_percentage'
+        ]
+
+
+class GuarantorRequestSerializer(serializers.ModelSerializer):
+    """Serializer for guarantor requests"""
+    
+    guarantor_name = serializers.SerializerMethodField()
+    requester_name = serializers.SerializerMethodField()
+    loan_amount = serializers.SerializerMethodField()
+    status_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = GuarantorRequest
+        fields = [
+            'id', 'loan_application', 'guarantor', 'guarantor_name',
+            'requester', 'requester_name', 'loan_amount',
+            'guarantee_amount', 'guarantee_percentage', 'status',
+            'status_display', 'message', 'response_message',
+            'requested_at', 'responded_at'
+        ]
+        read_only_fields = [
+            'id', 'status_display', 'requester_name',
+            'guarantor_name', 'loan_amount', 'requested_at', 'responded_at'
+        ]
+    
+    def get_guarantor_name(self, obj):
+        return obj.guarantor.full_name
+    
+    def get_requester_name(self, obj):
+        return obj.requester.full_name
+    
+    def get_loan_amount(self, obj):
+        return obj.loan_application.amount
+    
+    def get_status_display(self, obj):
+        return obj.get_status_display()
+    
+    def validate(self, data):
+        # Validate guarantee percentage
+        if data.get('guarantee_percentage', 0) <= 0 or data.get('guarantee_percentage', 0) > 100:
+            raise serializers.ValidationError("Guarantee percentage must be between 1% and 100%")
+        
+        # Calculate guarantee amount based on percentage
+        loan_application = data.get('loan_application')
+        if loan_application:
+            loan_amount = loan_application.amount
+            percentage = data.get('guarantee_percentage', 0)
+            guarantee_amount = (percentage / 100) * loan_amount
+            data['guarantee_amount'] = guarantee_amount
+        
+        # Check if guarantor has sufficient limit
+        guarantor = data.get('guarantor')
+        if guarantor:
+            try:
+                limit = GuarantorLimit.objects.get(member=guarantor)
+                if data.get('guarantee_amount', 0) > limit.available_guarantee_amount:
+                    raise serializers.ValidationError(
+                        f"Guarantee amount exceeds guarantor's available limit of {limit.available_guarantee_amount}"
+                    )
+            except GuarantorLimit.DoesNotExist:
+                # If no limit exists, create one
+                GuarantorLimit.update_guarantor_limit(guarantor)
+        
+        return data

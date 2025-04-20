@@ -540,3 +540,118 @@ class LoanDisbursement(models.Model):
             self.net_amount = self.amount - self.transaction_cost
         
         super().save(*args, **kwargs)
+
+# Add these models to loans/models.py
+
+class GuarantorRequest(models.Model):
+    """Requests to guarantors for loan applications"""
+    
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('ACCEPTED', 'Accepted'),
+        ('REJECTED', 'Rejected'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    loan_application = models.ForeignKey(LoanApplication, on_delete=models.CASCADE, related_name='guarantor_requests')
+    guarantor = models.ForeignKey(SaccoUser, on_delete=models.CASCADE, related_name='guarantor_requests_received')
+    requester = models.ForeignKey(SaccoUser, on_delete=models.CASCADE, related_name='guarantor_requests_sent')
+    
+    # Guarantor contribution
+    guarantee_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    guarantee_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    message = models.TextField(blank=True)
+    response_message = models.TextField(blank=True)
+    
+    requested_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-requested_at']
+    
+    def __str__(self):
+        return f"Guarantor Request - {self.guarantor.full_name} for {self.loan_application.member.full_name}'s loan"
+    
+    def accept(self, response_message=""):
+        """Accept the guarantor request"""
+        self.status = 'ACCEPTED'
+        self.response_message = response_message
+        self.responded_at = timezone.now()
+        self.save()
+        
+        # Update loan application
+        self.loan_application.has_guarantor = True
+        self.loan_application.save()
+        
+        return True
+    
+    def reject(self, response_message=""):
+        """Reject the guarantor request"""
+        self.status = 'REJECTED'
+        self.response_message = response_message
+        self.responded_at = timezone.now()
+        self.save()
+        return True
+
+
+class GuarantorLimit(models.Model):
+    """Track guarantor commitments and limits"""
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    member = models.OneToOneField(SaccoUser, on_delete=models.CASCADE, related_name='guarantor_limit')
+    
+    # Current guarantor commitments
+    total_guaranteed_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    active_guarantees_count = models.PositiveIntegerField(default=0)
+    
+    # Limits
+    maximum_guarantee_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    available_guarantee_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-updated_at']
+    
+    def __str__(self):
+        return f"Guarantor Limit - {self.member.full_name}"
+    
+    @classmethod
+    def update_guarantor_limit(cls, member):
+        """Update or create guarantor limit for a member"""
+        
+        # Get member's contribution summary
+        try:
+            from sacco_core.models import MemberShareSummary
+            summary = MemberShareSummary.objects.get(member=member)
+        except MemberShareSummary.DoesNotExist:
+            return None
+        
+        # Get or create guarantor limit record
+        limit, created = cls.objects.get_or_create(member=member)
+        
+        # Calculate current guarantee commitments
+        from loans.models import GuarantorRequest
+        active_guarantees = GuarantorRequest.objects.filter(
+            guarantor=member,
+            status='ACCEPTED',
+            loan_application__loan__status__in=['APPROVED', 'DISBURSED']
+        )
+        
+        total_guaranteed = sum(g.guarantee_amount for g in active_guarantees)
+        
+        # Set maximum guarantee amount based on monthly contributions only (not share capital)
+        maximum_amount = summary.total_contributions
+        available_amount = maximum_amount - total_guaranteed
+        
+        # Update the limit record
+        limit.total_guaranteed_amount = total_guaranteed
+        limit.active_guarantees_count = active_guarantees.count()
+        limit.maximum_guarantee_amount = maximum_amount
+        limit.available_guarantee_amount = max(0, available_amount)
+        limit.save()
+        
+        return limit

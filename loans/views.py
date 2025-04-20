@@ -18,7 +18,10 @@ from .serializers import (
     LoanStatementSerializer,
     RepaymentScheduleSerializer, 
     PaymentMethodSerializer,
-    LoanDisbursementSerializer
+    LoanDisbursementSerializer,
+    GuarantorRequestSerializer,
+    GuarantorLimitSerializer,
+    EligibleGuarantorSerializer
 )
 
 class LoanApplicationViewSet(viewsets.ModelViewSet):
@@ -1114,3 +1117,184 @@ class LoanRepaymentView(APIView):
             },
             "transaction_id": str(transaction.id)
         })
+
+# Add these classes to loans/views.py
+
+class EligibleGuarantorsView(APIView):
+    """API endpoint to get eligible guarantors for a loan"""
+    
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Get eligible guarantors for a loan amount"""
+        
+        # Get loan amount from query params
+        loan_amount = request.query_params.get('loan_amount')
+        if not loan_amount:
+            return Response({"error": "Loan amount is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            loan_amount = decimal.Decimal(loan_amount)
+        except:
+            return Response({"error": "Invalid loan amount"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get all members except the current user
+        members = SaccoUser.objects.filter(
+            role='MEMBER', 
+            is_active=True, 
+            is_on_hold=False
+        ).exclude(id=request.user.id)
+        
+        eligible_guarantors = []
+        
+        for member in members:
+            # Get or update guarantor limit
+            limit = GuarantorLimit.update_guarantor_limit(member)
+            
+            if limit and limit.available_guarantee_amount > 0:
+                # Calculate maximum percentage they can guarantee
+                max_percentage = min(100, (limit.available_guarantee_amount / loan_amount) * 100)
+                
+                if max_percentage >= 1:  # Only include if they can guarantee at least 1%
+                    eligible_guarantors.append({
+                        'id': member.id,
+                        'full_name': member.full_name,
+                        'email': member.email,
+                        'phone_number': member.phone_number,
+                        'available_guarantee_amount': limit.available_guarantee_amount,
+                        'maximum_percentage': max_percentage
+                    })
+        
+        # Sort by available guarantee amount (descending)
+        eligible_guarantors.sort(key=lambda x: x['available_guarantee_amount'], reverse=True)
+        
+        serializer = EligibleGuarantorSerializer(eligible_guarantors, many=True)
+        return Response(serializer.data)
+
+
+class GuarantorRequestViewSet(viewsets.ModelViewSet):
+    """API endpoint for guarantor requests"""
+    
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = GuarantorRequestSerializer
+    
+    def get_queryset(self):
+        """Return guarantor requests based on user role"""
+        user = self.request.user
+        
+        # Filter by status
+        status_param = self.request.query_params.get('status')
+        
+        if user.role == 'ADMIN':
+            # Admins see all requests
+            queryset = GuarantorRequest.objects.all()
+        else:
+            # Members see requests they're involved in
+            queryset = GuarantorRequest.objects.filter(
+                models.Q(requester=user) | models.Q(guarantor=user)
+            )
+        
+        # Apply status filter if provided
+        if status_param:
+            queryset = queryset.filter(status=status_param.upper())
+            
+        return queryset.order_by('-requested_at')
+    
+    def perform_create(self, serializer):
+        # Set requester to current user
+        serializer.save(requester=self.request.user)
+        
+        # Log the activity
+        ActivityLog.objects.create(
+            user=self.request.user,
+            action='GUARANTOR_REQUEST',
+            description=f"Requested {serializer.instance.guarantor.full_name} to guarantee {serializer.instance.guarantee_percentage}% of loan"
+        )
+    
+    @action(detail=True, methods=['post'])
+    def accept(self, request, pk=None):
+        """Accept a guarantor request"""
+        
+        guarantor_request = self.get_object()
+        
+        # Only the guarantor can accept
+        if request.user != guarantor_request.guarantor:
+            return Response(
+                {"error": "Only the requested guarantor can accept this request"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check if request is still pending
+        if guarantor_request.status != 'PENDING':
+            return Response(
+                {"error": f"Request is already {guarantor_request.get_status_display()}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get response message
+        response_message = request.data.get('response_message', '')
+        
+        # Accept the request
+        guarantor_request.accept(response_message)
+        
+        # Log the activity
+        ActivityLog.objects.create(
+            user=request.user,
+            action='GUARANTOR_ACCEPT',
+            description=f"Accepted guarantor request for {guarantor_request.loan_application.member.full_name}'s loan"
+        )
+        
+        return Response({
+            "status": "success",
+            "message": "Guarantor request accepted"
+        })
+    
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Reject a guarantor request"""
+        
+        guarantor_request = self.get_object()
+        
+        # Only the guarantor can reject
+        if request.user != guarantor_request.guarantor:
+            return Response(
+                {"error": "Only the requested guarantor can reject this request"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check if request is still pending
+        if guarantor_request.status != 'PENDING':
+            return Response(
+                {"error": f"Request is already {guarantor_request.get_status_display()}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get response message
+        response_message = request.data.get('response_message', '')
+        
+        # Reject the request
+        guarantor_request.reject(response_message)
+        
+        # Log the activity
+        ActivityLog.objects.create(
+            user=request.user,
+            action='GUARANTOR_REJECT',
+            description=f"Rejected guarantor request for {guarantor_request.loan_application.member.full_name}'s loan"
+        )
+        
+        return Response({
+            "status": "success",
+            "message": "Guarantor request rejected"
+        })
+    
+    @action(detail=False, methods=['get'])
+    def pending(self, request):
+        """Get pending guarantor requests for the current user"""
+        
+        pending_requests = GuarantorRequest.objects.filter(
+            guarantor=request.user,
+            status='PENDING'
+        ).order_by('-requested_at')
+        
+        serializer = self.get_serializer(pending_requests, many=True)
+        return Response(serializer.data)

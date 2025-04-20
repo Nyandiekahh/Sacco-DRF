@@ -1,5 +1,3 @@
-# loans/urls.py
-
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
@@ -8,7 +6,9 @@ from .views import (
     LoanEligibilityView,
     PaymentMethodViewSet,
     LoanDisbursementView,
-    LoanRepaymentView
+    LoanRepaymentView,
+    EligibleGuarantorsView,
+    GuarantorRequestViewSet
 )
 
 # Create a router for viewsets
@@ -43,4 +43,12 @@ urlpatterns = [
     
     # Bank accounts (for disbursement)
     path('bank-accounts/', LoanViewSet.as_view({'get': 'bank_accounts'}), name='bank-accounts'),
+    
+    # Guarantor endpoints
+    path('eligible-guarantors/', EligibleGuarantorsView.as_view(), name='eligible-guarantors'),
+    path('guarantor-requests/', GuarantorRequestViewSet.as_view({'get': 'list', 'post': 'create'}), name='guarantor-requests'),
+    path('guarantor-requests/pending/', GuarantorRequestViewSet.as_view({'get': 'pending'}), name='pending-guarantor-requests'),
+    path('guarantor-requests/<uuid:pk>/', GuarantorRequestViewSet.as_view({'get': 'retrieve'}), name='guarantor-request-detail'),
+    path('guarantor-requests/<uuid:pk>/accept/', GuarantorRequestViewSet.as_view({'post': 'accept'}), name='accept-guarantor-request'),
+    path('guarantor-requests/<uuid:pk>/reject/', GuarantorRequestViewSet.as_view({'post': 'reject'}), name='reject-guarantor-request'),
 ]
