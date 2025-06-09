@@ -478,3 +478,96 @@ class RecalculateSharesView(AdminRequiredMixin, APIView):
             'status': 'success',
             'message': 'Successfully recalculated share percentages for all members'
         })
+
+# In your contributions/views.py or wherever you handle contributions:
+
+class MonthlyContributionListCreateView(APIView):
+    """
+    List monthly contributions or create a new one
+    Now supports multiple contributions per month
+    """
+    
+    def get(self, request):
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+        member_id = request.query_params.get('member_id')
+        
+        # Build query
+        queryset = MonthlyContribution.objects.all()
+        
+        if year:
+            queryset = queryset.filter(year=year)
+        if month:
+            queryset = queryset.filter(month=month)
+        if member_id:
+            queryset = queryset.filter(member_id=member_id)
+        
+        # If user is not admin, only show their own contributions
+        if request.user.role != 'ADMIN':
+            queryset = queryset.filter(member=request.user)
+        
+        serializer = MonthlyContributionSerializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    def post(self, request):
+        """Create a new monthly contribution"""
+        serializer = MonthlyContributionSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            # Save the contribution
+            contribution = serializer.save(created_by=request.user)
+            
+            return Response(
+                MonthlyContributionSerializer(contribution).data,
+                status=status.HTTP_201_CREATED
+            )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MemberContributionSummaryView(APIView):
+    """
+    Get contribution summary for a member
+    """
+    
+    def get(self, request, member_id=None):
+        if member_id:
+            try:
+                member = SaccoUser.objects.get(id=member_id)
+            except SaccoUser.DoesNotExist:
+                return Response({'error': 'Member not found'}, status=404)
+        else:
+            member = request.user
+        
+        year = request.query_params.get('year', timezone.now().year)
+        month = request.query_params.get('month')
+        
+        # Get monthly summary
+        if month:
+            summary = MemberShareSummary.get_monthly_contribution_summary(
+                member, year=int(year), month=int(month)
+            )
+            
+            # Get individual contributions for the month
+            contributions = MonthlyContribution.objects.filter(
+                member=member, year=year, month=month
+            ).order_by('-created_at')
+            
+            return Response({
+                'member': member.full_name,
+                'year': year,
+                'month': month,
+                'summary': summary,
+                'contributions': MonthlyContributionSerializer(contributions, many=True).data
+            })
+        else:
+            # Get summary for entire year
+            monthly_summaries = MemberShareSummary.get_monthly_contribution_summary(
+                member, year=int(year)
+            )
+            
+            return Response({
+                'member': member.full_name,
+                'year': year,
+                'monthly_summaries': list(monthly_summaries)
+            })

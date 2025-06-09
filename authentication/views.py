@@ -107,68 +107,80 @@ class OTPLoginView(APIView):
     permission_classes = [permissions.AllowAny]
     
     def post(self, request):
-        """Login using OTP from an invitation."""
+        """Login using OTP from invitation or TOTP device"""
         
         serializer = OTPLoginSerializer(data=request.data)
-        if serializer.is_valid():
-            email = serializer.validated_data['email']
-            otp = serializer.validated_data['otp']
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             
-            # Verify OTP from invitation
-            invitation = Invitation.objects.filter(
-                email=email,
-                otp=otp,
-                is_used=False
-            ).first()
-            
-            if not invitation:
-                return Response(
-                    {"error": "Invalid OTP or email."}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            if invitation.is_expired:
-                return Response(
-                    {"error": "OTP has expired."}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Check if user exists
-            user = SaccoUser.objects.filter(email=email).first()
-            
-            # Set invitation as used
+        email = serializer.validated_data['email']
+        otp = serializer.validated_data['otp']
+        
+        # First, try invitation OTP
+        invitation = Invitation.objects.filter(
+            email=email,
+            otp=otp,
+            is_used=False
+        ).first()
+        
+        if invitation and not invitation.is_expired:
+            # Handle invitation-based login
             invitation.is_used = True
             invitation.save()
             
+            user = SaccoUser.objects.filter(email=email).first()
             if user:
-                # Existing user - generate token
                 refresh = RefreshToken.for_user(user)
-                
-                # Log the activity
                 ActivityLog.objects.create(
                     user=user,
                     action='LOGIN',
                     ip_address=request.META.get('REMOTE_ADDR'),
-                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                    description=f"Logged in using OTP.",
+                    description="Logged in using invitation OTP"
                 )
-                
                 return Response({
                     'refresh': str(refresh),
                     'access': str(refresh.access_token),
                     'user_exists': True,
                     'user_id': str(user.id)
-                }, status=status.HTTP_200_OK)
+                })
             else:
-                # New user - return flag to complete registration
                 return Response({
                     'message': 'OTP verified. Please complete registration.',
                     'user_exists': False,
                     'invitation_id': str(invitation.id)
-                }, status=status.HTTP_200_OK)
+                })
+        
+        # If no invitation found, try TOTP
+        try:
+            user = SaccoUser.objects.get(email=email)
+            if user.is_verified:  # Has OTP device
+                # Verify TOTP
+                from django_otp.oath import totp
+                from django_otp.models import Device
                 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+                devices = Device.objects.devices_for_user(user)
+                for device in devices:
+                    if device.verify_token(otp):
+                        refresh = RefreshToken.for_user(user)
+                        ActivityLog.objects.create(
+                            user=user,
+                            action='LOGIN',
+                            ip_address=request.META.get('REMOTE_ADDR'),
+                            description="Logged in using TOTP"
+                        )
+                        return Response({
+                            'refresh': str(refresh),
+                            'access': str(refresh.access_token),
+                            'user_exists': True,
+                            'user_id': str(user.id)
+                        })
+                        
+        except SaccoUser.DoesNotExist:
+            pass
+        
+        return Response({
+            "error": "Invalid OTP or email"
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 class CompleteRegistrationView(APIView):
     permission_classes = [permissions.AllowAny]
