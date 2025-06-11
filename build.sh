@@ -18,4 +18,4 @@ python manage.py migrate --run-syncdb
 python manage.py collectstatic --noinput
 
 # Create superuser if it doesn't exist
-echo "from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.create_superuser('admin@example.com', 'admin123') if not User.objects.filter(email='admin@example.com').exists() else print('Superuser already exists')" | python manage.py shell
+echo "from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.create_superuser(email='admin@sacco.com', password='TempPassword123!') if not User.objects.filter(email='admin@sacco.com').exists() else print('Superuser already exists')" | python manage.py shell
