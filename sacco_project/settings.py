@@ -1,6 +1,5 @@
-# sacco_project/settings.py
-
 import os
+import dj_database_url
 from datetime import timedelta
 from pathlib import Path
 
@@ -8,12 +7,18 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-replace-with-actual-secret-key-in-production'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-replace-with-actual-secret-key-in-production')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '.onrender.com',
+    'portalkmscom.vercel.app',
+    'www.kmssacco.co.ke'
+]
 
 # Application definition
 INSTALLED_APPS = [
@@ -45,12 +50,13 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Add WhiteNoise
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django_otp.middleware.OTPMiddleware',  # OTP middleware
+    'django_otp.middleware.OTPMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -76,26 +82,17 @@ TEMPLATES = [
 WSGI_APPLICATION = 'sacco_project.wsgi.application'
 
 # Database
-# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+if os.environ.get('DATABASE_URL'):
+    DATABASES = {
+        'default': dj_database_url.parse(os.environ.get('DATABASE_URL'))
     }
-}
-
-# For production, consider using PostgreSQL instead:
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'sacco_db',
-#         'USER': 'sacco_user',
-#         'PASSWORD': 'your_password',
-#         'HOST': 'localhost',
-#         'PORT': '5432',
-#     }
-# }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -105,7 +102,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
         'OPTIONS': {
-            'min_length': 10,  # Enforce stronger passwords
+            'min_length': 10,
         }
     },
     {
@@ -121,14 +118,17 @@ AUTH_USER_MODEL = 'authentication.SaccoUser'
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'Africa/Nairobi'  # Set to Kenya timezone
+TIME_ZONE = 'Africa/Nairobi'
 USE_I18N = True
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
+
+# WhiteNoise configuration
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media files (User uploads)
 MEDIA_URL = '/media/'
@@ -151,8 +151,8 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ),
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '30/hour',  # Limit anonymous requests
-        'user': '100/hour',  # Limit authenticated user requests
+        'anon': '30/hour',
+        'user': '100/hour',
     }
 }
 
@@ -172,15 +172,13 @@ SIMPLE_JWT = {
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # Local development
-    "https://portalkmscom.vercel.app",  # Current deployment
-    "https://www.kmssacco.co.ke",  # Future deployment
+    "http://localhost:3000",
+    "https://portalkmscom.vercel.app",
+    "https://www.kmssacco.co.ke",
 ]
 
-# Optional: Allow credentials to be included in CORS requests
 CORS_ALLOW_CREDENTIALS = True
 
-# Optional: If you need to allow additional headers
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -193,29 +191,44 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# Gmail SMTP settings
+# Email settings
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'kms2022.sacco@gmail.com'
-EMAIL_HOST_PASSWORD = 'cimi zklx qdhx gfcn'  # Gmail App Password
-DEFAULT_FROM_EMAIL = 'kms2022.sacco@gmail.com'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'kms2022.sacco@gmail.com')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'cimi zklx qdhx gfcn')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'kms2022.sacco@gmail.com')
 
 # OTP Settings
 OTP_TOTP_ISSUER = 'SACCO System'
 
-# Security settings - Automatically adjust based on DEBUG mode
-SESSION_COOKIE_SECURE = not DEBUG  # False in development, True in production
-CSRF_COOKIE_SECURE = not DEBUG     # False in development, True in production
-SECURE_SSL_REDIRECT = not DEBUG    # False in development, True in production
-SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0  # 0 in development
-SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG  # False in development
-SECURE_HSTS_PRELOAD = not DEBUG    # False in development
+# Security settings
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_SSL_REDIRECT = not DEBUG
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = 'DENY'
 
 # Account lockout settings
-ACCOUNT_LOCKOUT_ATTEMPTS = 3  # Lock after 3 failed attempts
-ACCOUNT_LOCKOUT_TIME = 30  # Lock for 30 minutes (in minutes)
+ACCOUNT_LOCKOUT_ATTEMPTS = 3
+ACCOUNT_LOCKOUT_TIME = 30
+
+# Logging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+}
