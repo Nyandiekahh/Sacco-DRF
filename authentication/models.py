@@ -55,7 +55,7 @@ class SaccoUser(AbstractBaseUser, PermissionsMixin):
     bank_account_name = models.CharField(max_length=100, blank=True)
     
     # Membership details
-    membership_number = models.CharField(max_length=20, unique=True, blank=True)
+    membership_number = models.CharField(max_length=20, unique=True, blank=True, null=True)
     date_joined = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
     is_verified = models.BooleanField(default=False)  # For KYC verification
