@@ -172,7 +172,25 @@ SIMPLE_JWT = {
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # For future React frontend
+    "http://localhost:3000",  # Local development
+    "https://portalkmscom.vercel.app",  # Current deployment
+    "https://www.kmssacco.co.ke",  # Future deployment
+]
+
+# Optional: Allow credentials to be included in CORS requests
+CORS_ALLOW_CREDENTIALS = True
+
+# Optional: If you need to allow additional headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
 ]
 
 # Gmail SMTP settings
