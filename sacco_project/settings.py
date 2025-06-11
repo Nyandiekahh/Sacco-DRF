@@ -10,15 +10,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-replace-with-actual-secret-key-in-production')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    '.onrender.com',
-    'portalkmscom.vercel.app',
-    'www.kmssacco.co.ke'
-]
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')]
 
 # Application definition
 INSTALLED_APPS = [
@@ -50,7 +44,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # Add WhiteNoise
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -215,8 +209,21 @@ SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = 'DENY'
 
 # Account lockout settings
-ACCOUNT_LOCKOUT_ATTEMPTS = 3
-ACCOUNT_LOCKOUT_TIME = 30
+ACCOUNT_LOCKOUT_ATTEMPTS = int(os.environ.get('ACCOUNT_LOCKOUT_ATTEMPTS', '3'))
+ACCOUNT_LOCKOUT_TIME = int(os.environ.get('ACCOUNT_LOCKOUT_TIME', '30'))
+
+# SACCO Business Settings
+SACCO_SETTINGS = {
+    'NAME': os.environ.get('SACCO_NAME', 'KMS SACCO'),
+    'SHARE_VALUE': float(os.environ.get('SACCO_SHARE_VALUE', '5000.00')),
+    'MIN_CONTRIBUTION': float(os.environ.get('SACCO_MIN_CONTRIBUTION', '1000.00')),
+    'LOAN_INTEREST_RATE': float(os.environ.get('SACCO_LOAN_INTEREST_RATE', '12.00')),
+    'MAX_LOAN_MULTIPLIER': float(os.environ.get('SACCO_MAX_LOAN_MULTIPLIER', '3.0')),
+    'PHONE': os.environ.get('SACCO_PHONE', '+254700000000'),
+    'EMAIL': os.environ.get('SACCO_EMAIL', 'info@kmssacco.co.ke'),
+    'POSTAL_ADDRESS': os.environ.get('SACCO_POSTAL_ADDRESS', 'P.O. Box 12345, Nairobi'),
+    'PHYSICAL_ADDRESS': os.environ.get('SACCO_PHYSICAL_ADDRESS', 'Nairobi, Kenya'),
+}
 
 # Logging
 LOGGING = {

@@ -1,7 +1,7 @@
 databases:
   - name: sacco-db
-    databaseName: sacco_db
-    user: sacco_user
+    databaseName: kms_sacco
+    user: kms_sacco_user
     region: oregon
 
 services:
@@ -22,5 +22,25 @@ services:
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
-        value: ".onrender.com"
+        value: ".onrender.com,portalkmscom.vercel.app,www.kmssacco.co.ke"
+      - key: EMAIL_HOST
+        value: "smtp.gmail.com"
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_USE_TLS
+        value: "True"
+      - key: EMAIL_HOST_USER
+        value: "kms2022.sacco@gmail.com"
+      - key: EMAIL_HOST_PASSWORD
+        value: "cimi zklx qdhx gfcn"
+      - key: DEFAULT_FROM_EMAIL
+        value: "kms2022.sacco@gmail.com"
+      - key: SACCO_NAME
+        value: "KMS SACCO"
+      - key: SACCO_SHARE_VALUE
+        value: "5000.00"
+      - key: SACCO_MIN_CONTRIBUTION
+        value: "1000.00"
+      - key: SACCO_LOAN_INTEREST_RATE
+        value: "12.00"
     region: oregon
