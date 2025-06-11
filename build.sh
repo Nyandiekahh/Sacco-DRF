@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# exit on error
+# Exit on error
 set -o errexit
 
-echo "🚀 Starting build process..."
-
 # Install dependencies
-echo "📦 Installing dependencies..."
 pip install -r requirements.txt
 
+# Make migrations for authentication app first
+python manage.py makemigrations authentication
+
+# Make migrations for all other apps
+python manage.py makemigrations
+
+# Run migrations with syncdb
+python manage.py migrate --run-syncdb
+
 # Collect static files
-echo "📁 Collecting static files..."
-python manage.py collectstatic --no-input
+python manage.py collectstatic --noinput
 
-# Run migrations
-echo "🗄️ Running database migrations..."
-python manage.py migrate
-
-echo "🎉 Build process completed successfully!"
+# Create superuser if it doesn't exist
+echo "from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.create_superuser('admin', 'admin@example.com', 'admin123') if not User.objects.filter(username='admin').exists() else print('Superuser already exists')" | python manage.py shell
