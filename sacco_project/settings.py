@@ -205,13 +205,13 @@ DEFAULT_FROM_EMAIL = 'kms2022.sacco@gmail.com'
 # OTP Settings
 OTP_TOTP_ISSUER = 'SACCO System'
 
-# Security settings
-SESSION_COOKIE_SECURE = True  # Uncomment in production
-CSRF_COOKIE_SECURE = True  # Uncomment in production
-SECURE_SSL_REDIRECT = False  # Set to True in production
-SECURE_HSTS_SECONDS = 31536000  # Uncomment in production
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True  # Uncomment in production
-SECURE_HSTS_PRELOAD = True  # Uncomment in production
+# Security settings - Automatically adjust based on DEBUG mode
+SESSION_COOKIE_SECURE = not DEBUG  # False in development, True in production
+CSRF_COOKIE_SECURE = not DEBUG     # False in development, True in production
+SECURE_SSL_REDIRECT = not DEBUG    # False in development, True in production
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0  # 0 in development
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG  # False in development
+SECURE_HSTS_PRELOAD = not DEBUG    # False in development
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = 'DENY'
