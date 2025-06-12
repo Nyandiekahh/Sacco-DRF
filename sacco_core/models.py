@@ -176,30 +176,6 @@ class MemberShareSummary(models.Model):
     def __str__(self):
         return f"Share Summary - {self.member.full_name}"
     
-    @classmethod
-    def update_member_summary(cls, member):
-        """Update the summary for a specific member"""
-        
-        # Get or create summary
-        summary, created = cls.objects.get_or_create(member=member)
-        
-        # Calculate share capital
-        settings = SaccoSettings.get_settings()
-        total_share_capital = ShareCapital.objects.filter(member=member).aggregate(
-            total=models.Sum('amount')
-        )['total'] or 0
-        
-        # Set share capital target
-        share_capital_target = settings.share_value
-        
-        # Calculate completion percentage
-        if share_capital_target > 0:
-            completion_percentage = min(100, (total_share_capital / share_capital_target) * 100)
-        else:
-            completion_percentage = 0
-        
-        # In sacco_core/models.py, update the MemberShareSummary.update_member_summary method:
-
 @classmethod
 def update_member_summary(cls, member):
     """Update the summary for a specific member"""
