@@ -137,6 +137,9 @@ class OTPLoginView(APIView):
                     ip_address=request.META.get('REMOTE_ADDR'),
                     description="Logged in using invitation OTP"
                 )
+                # Ensure user session is properly established
+                user.reset_failed_login()
+                
                 return Response({
                     'refresh': str(refresh),
                     'access': str(refresh.access_token),
@@ -222,6 +225,9 @@ class CompleteRegistrationView(APIView):
             
             # Generate token
             refresh = RefreshToken.for_user(user)
+            
+            # Ensure user session is ready
+            user.reset_failed_login()
             
             # Log the activity
             ActivityLog.objects.create(

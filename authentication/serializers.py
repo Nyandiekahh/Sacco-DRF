@@ -79,7 +79,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'whatsapp_number', 'mpesa_number', 'bank_name', 
             'bank_account_number', 'bank_account_name', 'membership_number',
             'date_joined', 'is_active', 'is_verified', 'is_on_hold',
-            'on_hold_reason', 'documents', 'is_admin', 'share_capital_term'
+            'on_hold_reason', 'documents', 'is_admin', 'share_capital_term',
+            'role'
         ]
         read_only_fields = [
             'id', 'email', 'membership_number', 'date_joined', 
@@ -106,6 +107,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_is_admin(self, obj):
         """Check if user is an admin"""
         return obj.role == SaccoUser.ADMIN
+    
+    def to_representation(self, instance):
+        """Ensure consistent data format"""
+        data = super().to_representation(instance)
+        # Ensure role is always uppercase string
+        data['role'] = instance.role.upper() if instance.role else 'MEMBER'
+        # Ensure is_admin is always boolean
+        data['is_admin'] = instance.role == SaccoUser.ADMIN
+        return data
     
     def validate(self, attrs):
         # Validate ID number

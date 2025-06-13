@@ -9,6 +9,8 @@ from .views import (
     BankAccountViewSet,
     BankTransactionViewSet
 )
+# Import the financial summary view from members app
+from members.views import MemberFinancialSummaryView
 
 # Create a router for viewsets
 router = DefaultRouter()
@@ -21,4 +23,7 @@ router.register(r'bank-transactions', BankTransactionViewSet, basename='bank-tra
 urlpatterns = [
     # Include the router URLs
     path('', include(router.urls)),
+    
+    # Add the total investments endpoint that transactionService.calculateTotalInvestments() expects
+    path('total-investments/', MemberFinancialSummaryView.as_view(), name='total-investments'),
 ]

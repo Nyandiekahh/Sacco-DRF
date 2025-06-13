@@ -2,7 +2,12 @@
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import MemberViewSet, MemberDashboardView, MemberProfileView
+from .views import (
+    MemberViewSet, 
+    MemberDashboardView, 
+    MemberProfileView,
+    MemberFinancialSummaryView
+)
 
 # Create a router for viewsets
 router = DefaultRouter()
@@ -17,4 +22,7 @@ urlpatterns = [
     
     # Member profile
     path('profile/', MemberProfileView.as_view(), name='member-profile'),
+    
+    # Financial summary endpoint for the frontend
+    path('financial-summary/', MemberFinancialSummaryView.as_view(), name='member-financial-summary'),
 ]
