@@ -245,3 +245,4 @@ class ActivityLog(models.Model):
         if self.user:
             return f"{self.user.email} - {self.get_action_display()} at {self.created_at}"
         return f"System - {self.get_action_display()} at {self.created_at}"
+        
