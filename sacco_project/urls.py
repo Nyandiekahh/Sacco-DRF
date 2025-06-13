@@ -1,11 +1,10 @@
-# sacco_project/urls.py
+# sacco_project/urls.py - Updated without settings_api
 
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
-from django.views.generic import TemplateView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from authentication.views import VerifyDocumentView
 
@@ -38,10 +37,6 @@ def api_root(request):
                 'applications': '/api/loans/applications/',
                 'loans': '/api/loans/loans/',
                 'eligibility': '/api/loans/eligibility/',
-            },
-            'settings': {
-                'sacco': '/api/settings/sacco/current/',
-                'user': '/api/settings/user/profile/',
             },
             'reports': '/api/reports/reports/',
             'transactions': '/api/transactions/expenses/',
@@ -98,9 +93,6 @@ urlpatterns = [
         
         # Reports
         path('reports/', include('reports.urls')),
-        
-        # Settings
-        path('settings/', include('settings_api.urls')),
         
         # JWT token endpoints
         path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),

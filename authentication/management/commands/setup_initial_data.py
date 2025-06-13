@@ -1,7 +1,8 @@
+# authentication/management/commands/setup_initial_data.py
+
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from sacco_core.models import SaccoSettings
-from settings_api.models import SaccoSettings as ApiSettings
 
 class Command(BaseCommand):
     help = 'Set up initial SACCO data from environment variables'
@@ -23,35 +24,26 @@ class Command(BaseCommand):
                 'PHYSICAL_ADDRESS': 'Nairobi, Kenya',
             })
             
-            # Create core settings
-            self.stdout.write('📋 Setting up core SACCO settings...')
-            core_settings = SaccoSettings.get_settings()
-            core_settings.name = sacco_config['NAME']
-            core_settings.share_value = sacco_config['SHARE_VALUE']
-            core_settings.minimum_monthly_contribution = sacco_config['MIN_CONTRIBUTION']
-            core_settings.loan_interest_rate = sacco_config['LOAN_INTEREST_RATE']
-            core_settings.maximum_loan_multiplier = sacco_config['MAX_LOAN_MULTIPLIER']
-            core_settings.phone_number = sacco_config['PHONE']
-            core_settings.email = sacco_config['EMAIL']
-            core_settings.postal_address = sacco_config['POSTAL_ADDRESS']
-            core_settings.physical_address = sacco_config['PHYSICAL_ADDRESS']
-            core_settings.save()
-            self.stdout.write(self.style.SUCCESS('✅ Core settings configured'))
+            # Create or update SACCO settings
+            self.stdout.write('📋 Setting up SACCO settings...')
+            sacco_settings = SaccoSettings.get_settings()
+            sacco_settings.name = sacco_config['NAME']
+            sacco_settings.share_value = sacco_config['SHARE_VALUE']
+            sacco_settings.minimum_monthly_contribution = sacco_config['MIN_CONTRIBUTION']
+            sacco_settings.loan_interest_rate = sacco_config['LOAN_INTEREST_RATE']
+            sacco_settings.maximum_loan_multiplier = sacco_config['MAX_LOAN_MULTIPLIER']
+            sacco_settings.phone_number = sacco_config['PHONE']
+            sacco_settings.email = sacco_config['EMAIL']
+            sacco_settings.postal_address = sacco_config['POSTAL_ADDRESS']
+            sacco_settings.physical_address = sacco_config['PHYSICAL_ADDRESS']
+            sacco_settings.save()
+            self.stdout.write(self.style.SUCCESS('✅ SACCO settings configured'))
             
-            # Create API settings
-            self.stdout.write('⚙️  Setting up API settings...')
-            api_settings = ApiSettings.get_settings()
-            api_settings.sacco_name = sacco_config['NAME']
-            api_settings.share_value = sacco_config['SHARE_VALUE']
-            api_settings.minimum_monthly_contribution = sacco_config['MIN_CONTRIBUTION']
-            api_settings.loan_interest_rate = sacco_config['LOAN_INTEREST_RATE']
-            api_settings.maximum_loan_multiplier = sacco_config['MAX_LOAN_MULTIPLIER']
-            api_settings.phone_number = sacco_config['PHONE']
-            api_settings.email = sacco_config['EMAIL']
-            api_settings.postal_address = sacco_config['POSTAL_ADDRESS']
-            api_settings.physical_address = sacco_config['PHYSICAL_ADDRESS']
-            api_settings.save()
-            self.stdout.write(self.style.SUCCESS('✅ API settings configured'))
+            # Create initial financial summary
+            from sacco_core.models import FinancialSummary
+            self.stdout.write('💰 Creating initial financial summary...')
+            FinancialSummary.generate_current_summary()
+            self.stdout.write(self.style.SUCCESS('✅ Financial summary created'))
             
             self.stdout.write(self.style.SUCCESS('\n🎉 Initial SACCO data setup completed successfully!'))
             

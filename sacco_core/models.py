@@ -1,4 +1,4 @@
-# sacco_core/models.py
+# sacco_core/models.py - Fixed with proper method placement
 
 import uuid
 import decimal
@@ -13,8 +13,8 @@ class SaccoSettings(models.Model):
     name = models.CharField(max_length=255, default="SACCO Organization")
     share_value = models.DecimalField(max_digits=10, decimal_places=2, default=5000.00)
     minimum_monthly_contribution = models.DecimalField(max_digits=10, decimal_places=2, default=1000.00)
-    loan_interest_rate = models.DecimalField(max_digits=5, decimal_places=2, default=10.00)  # Annual percentage
-    maximum_loan_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=3.00)  # Multiple of shares
+    loan_interest_rate = models.DecimalField(max_digits=5, decimal_places=2, default=10.00)
+    maximum_loan_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=3.00)
     loan_processing_fee_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=1.00)
     loan_insurance_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=1.00)
     
@@ -72,12 +72,10 @@ class ShareCapital(models.Model):
         return f"Share Capital - {self.member.full_name} - {self.amount}"
     
     def save(self, *args, **kwargs):
-        # Update member's share capital total
         super().save(*args, **kwargs)
-        
-        # Recalculate and update member share totals
+        # Update member's share capital total
         MemberShareSummary.update_member_summary(self.member)
-        
+
 
 class MonthlyContribution(models.Model):
     """Member monthly contributions"""
@@ -85,14 +83,13 @@ class MonthlyContribution(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     member = models.ForeignKey(SaccoUser, on_delete=models.CASCADE, related_name='monthly_contributions')
     year = models.PositiveIntegerField()
-    month = models.PositiveIntegerField()  # 1-12 for January-December
+    month = models.PositiveIntegerField()
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     transaction_date = models.DateField()
     reference_number = models.CharField(max_length=50)
     transaction_code = models.CharField(max_length=50)
     transaction_message = models.TextField(blank=True)
     
-    # Optional: Add a field to distinguish different contributions in the same month
     contribution_type = models.CharField(
         max_length=50, 
         default='REGULAR',
@@ -124,9 +121,8 @@ class MonthlyContribution(models.Model):
     
     class Meta:
         ordering = ['-year', '-month', '-created_at']
-        # REMOVED: unique_together = ['member', 'year', 'month']
         indexes = [
-            models.Index(fields=['member', 'year', 'month']),  # For faster queries
+            models.Index(fields=['member', 'year', 'month']),
             models.Index(fields=['transaction_date']),
         ]
     
@@ -134,10 +130,8 @@ class MonthlyContribution(models.Model):
         return f"Contribution - {self.member.full_name} - {self.year}/{self.month} - {self.amount} ({self.contribution_type})"
     
     def save(self, *args, **kwargs):
-        # Update member's contribution total
         super().save(*args, **kwargs)
-        
-        # Recalculate and update member contribution totals
+        # Update member's contribution total
         MemberShareSummary.update_member_summary(self.member)
 
 
@@ -158,8 +152,8 @@ class MemberShareSummary(models.Model):
     previous_year_contributions = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
     # Shares
-    total_deposits = models.DecimalField(max_digits=12, decimal_places=2, default=0)  # Share capital + contributions
-    percentage_of_total_pool = models.DecimalField(max_digits=5, decimal_places=2, default=0)  # % of all deposits
+    total_deposits = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    percentage_of_total_pool = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     number_of_shares = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
     # Dividends
@@ -176,98 +170,96 @@ class MemberShareSummary(models.Model):
     def __str__(self):
         return f"Share Summary - {self.member.full_name}"
     
-@classmethod
-def update_member_summary(cls, member):
-    """Update the summary for a specific member"""
+    @classmethod
+    def update_member_summary(cls, member):
+        """Update the summary for a specific member"""
+        
+        # Get or create summary
+        summary, created = cls.objects.get_or_create(member=member)
+        
+        # Calculate share capital
+        settings = SaccoSettings.get_settings()
+        total_share_capital = ShareCapital.objects.filter(member=member).aggregate(
+            total=models.Sum('amount')
+        )['total'] or 0
+        
+        # Set share capital target
+        share_capital_target = settings.share_value
+        
+        # Calculate completion percentage
+        if share_capital_target > 0:
+            completion_percentage = min(100, (total_share_capital / share_capital_target) * 100)
+        else:
+            completion_percentage = 0
+        
+        # Calculate contributions
+        current_year = timezone.now().year
+        
+        total_contributions = MonthlyContribution.objects.filter(member=member).aggregate(
+            total=models.Sum('amount')
+        )['total'] or 0
+        
+        current_year_contributions = MonthlyContribution.objects.filter(
+            member=member, year=current_year
+        ).aggregate(total=models.Sum('amount'))['total'] or 0
+        
+        previous_year_contributions = MonthlyContribution.objects.filter(
+            member=member, year=current_year-1
+        ).aggregate(total=models.Sum('amount'))['total'] or 0
+        
+        # Total deposits
+        total_deposits = total_share_capital + total_contributions
+        
+        # Number of shares
+        number_of_shares = 0
+        if settings.share_value > 0:
+            number_of_shares = total_share_capital / settings.share_value
+        
+        # Update the summary
+        summary.total_share_capital = total_share_capital
+        summary.share_capital_target = share_capital_target
+        summary.share_capital_completion_percentage = completion_percentage
+        summary.total_contributions = total_contributions
+        summary.current_year_contributions = current_year_contributions
+        summary.previous_year_contributions = previous_year_contributions
+        summary.total_deposits = total_deposits
+        summary.number_of_shares = number_of_shares
+        summary.save()
+        
+        # Recalculate percentage shares for all members
+        cls.recalculate_percentages()
+        
+        return summary
     
-    # Get or create summary
-    summary, created = cls.objects.get_or_create(member=member)
-    
-    # Calculate share capital (unchanged)
-    settings = SaccoSettings.get_settings()
-    total_share_capital = ShareCapital.objects.filter(member=member).aggregate(
-        total=models.Sum('amount')
-    )['total'] or 0
-    
-    # Set share capital target
-    share_capital_target = settings.share_value
-    
-    # Calculate completion percentage
-    if share_capital_target > 0:
-        completion_percentage = min(100, (total_share_capital / share_capital_target) * 100)
-    else:
-        completion_percentage = 0
-    
-    # Calculate contributions (now handles multiple contributions per month)
-    current_year = timezone.now().year
-    
-    # Total contributions across all time
-    total_contributions = MonthlyContribution.objects.filter(member=member).aggregate(
-        total=models.Sum('amount')
-    )['total'] or 0
-    
-    # Current year contributions (sum of all contributions in current year)
-    current_year_contributions = MonthlyContribution.objects.filter(
-        member=member, year=current_year
-    ).aggregate(total=models.Sum('amount'))['total'] or 0
-    
-    # Previous year contributions
-    previous_year_contributions = MonthlyContribution.objects.filter(
-        member=member, year=current_year-1
-    ).aggregate(total=models.Sum('amount'))['total'] or 0
-    
-    # Total deposits
-    total_deposits = total_share_capital + total_contributions
-    
-    # Number of shares
-    number_of_shares = 0
-    if settings.share_value > 0:
-        number_of_shares = total_share_capital / settings.share_value
-    
-    # Update the summary
-    summary.total_share_capital = total_share_capital
-    summary.share_capital_target = share_capital_target
-    summary.share_capital_completion_percentage = completion_percentage
-    summary.total_contributions = total_contributions
-    summary.current_year_contributions = current_year_contributions
-    summary.previous_year_contributions = previous_year_contributions
-    summary.total_deposits = total_deposits
-    summary.number_of_shares = number_of_shares
-    summary.save()
-    
-    # Recalculate percentage shares for all members
-    cls.recalculate_percentages()
-
-# Add this helper method to get monthly summary
-@classmethod
-def get_monthly_contribution_summary(cls, member, year=None, month=None):
-    """Get contribution summary for a specific month or all months"""
-    from django.db.models import Sum, Count
-    
-    if year is None:
-        year = timezone.now().year
-    
-    query = MonthlyContribution.objects.filter(member=member, year=year)
-    
-    if month:
-        query = query.filter(month=month)
-        return query.aggregate(
-            total_amount=Sum('amount'),
-            contribution_count=Count('id')
-        )
-    else:
-        # Get summary by month for the year
-        return query.values('month').annotate(
-            total_amount=Sum('amount'),
-            contribution_count=Count('id'),
-            month_name=models.Case(
-                *[models.When(month=i, then=models.Value(month_name)) 
-                  for i, month_name in enumerate([
-                      'January', 'February', 'March', 'April', 'May', 'June',
-                      'July', 'August', 'September', 'October', 'November', 'December'
-                  ], 1)]
+    @classmethod
+    def get_monthly_contribution_summary(cls, member, year=None, month=None):
+        """Get contribution summary for a specific month or all months"""
+        from django.db.models import Sum, Count
+        
+        if year is None:
+            year = timezone.now().year
+        
+        query = MonthlyContribution.objects.filter(member=member, year=year)
+        
+        if month:
+            query = query.filter(month=month)
+            return query.aggregate(
+                total_amount=Sum('amount'),
+                contribution_count=Count('id')
             )
-        ).order_by('month')
+        else:
+            # Get summary by month for the year
+            return query.values('month').annotate(
+                total_amount=Sum('amount'),
+                contribution_count=Count('id'),
+                month_name=models.Case(
+                    *[models.When(month=i, then=models.Value(month_name)) 
+                      for i, month_name in enumerate([
+                          'January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December'
+                      ], 1)]
+                )
+            ).order_by('month')
     
     @classmethod
     def recalculate_percentages(cls):
@@ -292,7 +284,7 @@ class DividendDistribution(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     distribution_date = models.DateField()
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)
-    source = models.CharField(max_length=50, default="Interest Income")  # Source of dividends
+    source = models.CharField(max_length=50, default="Interest Income")
     description = models.TextField(blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
@@ -325,19 +317,18 @@ class MemberDividend(models.Model):
         related_name='dividends'
     )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    percentage_share = models.DecimalField(max_digits=5, decimal_places=2)  # % of total distribution
+    percentage_share = models.DecimalField(max_digits=5, decimal_places=2)
     
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
         ordering = ['-distribution__distribution_date', '-created_at']
-        unique_together = ['distribution', 'member']  # One dividend per member per distribution
+        unique_together = ['distribution', 'member']
     
     def __str__(self):
         return f"Dividend - {self.member.full_name} - {self.distribution.distribution_date} - {self.amount}"
     
     def save(self, *args, **kwargs):
-        # Save the dividend
         super().save(*args, **kwargs)
         
         # Update member's dividend summary
@@ -365,7 +356,7 @@ class Loan(models.Model):
     
     # Loan details
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    interest_rate = models.DecimalField(max_digits=5, decimal_places=2)  # Annual percentage
+    interest_rate = models.DecimalField(max_digits=5, decimal_places=2)
     application_date = models.DateField(auto_now_add=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
     purpose = models.TextField()

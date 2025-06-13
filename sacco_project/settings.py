@@ -1,3 +1,5 @@
+# sacco_project/settings.py - Remove settings_api from INSTALLED_APPS to avoid conflicts
+
 import os
 import dj_database_url
 from datetime import timedelta
@@ -31,7 +33,7 @@ INSTALLED_APPS = [
     'django_otp.plugins.otp_totp',
     'django_otp.plugins.otp_static',
     
-    # Project apps
+    # Project apps - Removed 'settings_api' to avoid conflicts
     'sacco_core',
     'authentication',
     'members',
@@ -39,7 +41,6 @@ INSTALLED_APPS = [
     'loans',
     'transactions',
     'reports',
-    'settings_api',
 ]
 
 MIDDLEWARE = [
