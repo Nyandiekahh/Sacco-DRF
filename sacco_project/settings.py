@@ -132,7 +132,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# REST Framework settings
+# REST Framework settings - Production Ready
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -146,8 +146,15 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ),
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '30/hour',
-        'user': '100/hour',
+        # Anonymous users - reasonable for login attempts
+        'anon': '300/hour',  # 5 per minute
+        
+        # Authenticated users - generous for dashboard usage
+        'user': '3000/hour',  # 50 per minute (normal dashboard usage)
+        
+        # You can add specific rates for specific views if needed:
+        # 'login': '20/hour',     # For login endpoint specifically
+        # 'bulk': '50/hour',      # For bulk operations
     }
 }
 
